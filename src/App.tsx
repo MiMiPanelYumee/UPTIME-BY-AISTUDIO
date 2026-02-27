@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { Activity, Zap, AlertTriangle, CheckCircle2, Settings, Plus, Trash2, Clock, Server } from 'lucide-react';
+import { Activity, Zap, AlertTriangle, CheckCircle2, Settings, Plus, Trash2, Clock, Server, Bell } from 'lucide-react';
 import { format } from 'date-fns';
 import axios from 'axios';
 
@@ -37,14 +37,33 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
+  const prevUrlsRef = useRef<URLData[]>([]);
 
   // Fetch Data
   const fetchData = async () => {
     try {
       const res = await axios.get('/api/urls');
-      setUrls(res.data);
-      if (!selectedUrl && res.data.length > 0) {
-        setSelectedUrl(res.data[0]);
+      const newUrls: URLData[] = res.data;
+      
+      // Check for status changes to trigger local notifications
+      const prevUrls = prevUrlsRef.current;
+      if (prevUrls.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
+        newUrls.forEach(newUrl => {
+          const prevUrl = prevUrls.find(u => u.id === newUrl.id);
+          if (prevUrl && prevUrl.status !== 'UNKNOWN' && prevUrl.status !== newUrl.status) {
+            const statusText = newUrl.status === 'RUN' ? '✅ KEMBALI ONLINE' : '❌ OFFLINE (DOWN)';
+            new Notification('Yumee Panels Alert', {
+              body: `${newUrl.name} is now ${statusText}\n${newUrl.url}`,
+              icon: 'https://cdn-icons-png.flaticon.com/512/1157/1157000.png'
+            });
+          }
+        });
+      }
+      prevUrlsRef.current = newUrls;
+
+      setUrls(newUrls);
+      if (!selectedUrl && newUrls.length > 0) {
+        setSelectedUrl(newUrls[0]);
       }
     } catch (e) {
       console.error(e);
@@ -118,6 +137,19 @@ export default function App() {
     }
   };
 
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        alert('Notifikasi Aplikasi Berhasil Diaktifkan!');
+      } else {
+        alert('Izin notifikasi ditolak oleh browser.');
+      }
+    } else {
+      alert('Browser HP Anda tidak mendukung notifikasi web.');
+    }
+  };
+
   // Chart Data
   const chartData = history.map(h => ({
     time: format(new Date(h.timestamp), 'HH:mm:ss'),
@@ -175,9 +207,18 @@ export default function App() {
                   placeholder="-1001234567890"
                 />
               </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <button type="button" onClick={() => setShowSettings(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white">Cancel</button>
-                <button type="submit" className="px-4 py-2 rounded-lg text-sm bg-[#ff00ff]/20 text-[#ff00ff] border border-[#ff00ff]/50 hover:bg-[#ff00ff]/30 hover:shadow-[0_0_15px_rgba(255,0,255,0.4)] transition-all">Save Config</button>
+              <div className="flex justify-between items-center mt-6 pt-4 border-t border-white/10">
+                <button 
+                  type="button" 
+                  onClick={requestNotificationPermission}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-blue-500/20 text-blue-400 border border-blue-500/50 hover:bg-blue-500/30 transition-all"
+                >
+                  <Bell className="w-4 h-4" /> Aktifkan Notif App
+                </button>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowSettings(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white">Cancel</button>
+                  <button type="submit" className="px-4 py-2 rounded-lg text-sm bg-[#ff00ff]/20 text-[#ff00ff] border border-[#ff00ff]/50 hover:bg-[#ff00ff]/30 hover:shadow-[0_0_15px_rgba(255,0,255,0.4)] transition-all">Save Config</button>
+                </div>
               </div>
             </form>
           </div>
